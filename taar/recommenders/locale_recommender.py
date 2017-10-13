@@ -1,4 +1,5 @@
 import logging
+import json
 from ..recommenders import utils
 from .base_recommender import BaseRecommender
 
