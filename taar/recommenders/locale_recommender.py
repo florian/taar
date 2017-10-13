@@ -19,11 +19,16 @@ class LocaleRecommender(BaseRecommender):
     This recommender may provide useful recommendations when collaborative_recommender
     may not work.
     """
-    def __init__(self):
+    def __init__(self, TOP_ADDONS_BY_LOCALE_FILE_PATH):
         self.top_addons_per_locale = utils.get_s3_json_content(ADDON_LIST_BUCKET,
                                                                ADDON_LIST_KEY)
         if self.top_addons_per_locale is None:
             logger.error("Cannot download the top per locale file {}".format(ADDON_LIST_KEY))
+
+        with open(TOP_ADDONS_BY_LOCALE_FILE_PATH) as data_file:
+            top_addons_by_locale = json.load(data_file)
+
+        self.top_addons_by_locale = defaultdict(lambda: defaultdict(int), top_addons_by_locale)
 
     def can_recommend(self, client_data):
         # We can't recommend if we don't have our data files.
@@ -44,3 +49,7 @@ class LocaleRecommender(BaseRecommender):
     def recommend(self, client_data, limit):
         client_locale = client_data.get('locale')
         return self.top_addons_per_locale.get(client_locale, [])[:limit]
+
+    def get_recommendations(self, client_data):
+        client_locale = client_data.get('locale', None)
+        return defaultdict(int, self.top_addons_by_locale[client_locale])
