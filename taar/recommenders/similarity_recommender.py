@@ -163,3 +163,12 @@ class SimilarityRecommender(BaseRecommender):
             if len(recommendations) > limit:
                 break
         return recommendations[:limit]
+
+    def get_recommendations(self, client_data):
+        recommendations = defaultdict(int)
+
+        for donor_score, donor in zip(*sr.get_similar_donors(client_data)):
+            for addon in sr.donors_pool[donor]['active_addons']:
+                recommendations[addon] += donor_score
+
+        return recommendations
