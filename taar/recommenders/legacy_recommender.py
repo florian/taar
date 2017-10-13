@@ -59,3 +59,13 @@ class LegacyRecommender(BaseRecommender):
                            extra={"limit": limit, "num_recommendations": num_recommendation})
 
         return recommendations[:limit]
+
+    def get_recommendations(self, client_data):
+        recommendations = defaultdict(int)
+        addons = client_data.get('disabled_addons_ids', [])
+
+        for addon in addons:
+            for replacement in self.legacy_addons.get(addon, []):
+                recommendations[replacement] += 1
+
+        return recommendations
