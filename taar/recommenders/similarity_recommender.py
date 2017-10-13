@@ -2,7 +2,8 @@ import logging
 import numpy as np
 from ..recommenders import utils
 from .base_recommender import BaseRecommender
-from scipy.spatial import distance
+from scipy.spatial.distance import hamming, canberra
+import scipy
 
 CATEGORICAL_FEATURES = ["geo_city", "locale", "os"]
 CONTINUOUS_FEATURES = ["subsession_length", "bookmark_count", "tab_open_count", "total_uri", "unique_tlds"]
@@ -13,6 +14,8 @@ LR_CURVES_SIMILARITY_TO_PROBABILITY = 'taar/similarity/lr_curves.json'
 
 logger = logging.getLogger(__name__)
 
+def cdist(dist, A, b):
+    return np.array([dist(a, b) for a in A])
 
 class SimilarityRecommender(BaseRecommender):
     """ A recommender class that returns top N addons based on the client similarity
@@ -107,12 +110,10 @@ class SimilarityRecommender(BaseRecommender):
     def get_similar_donors(self, client_data):
         """Computes a set of :float: similarity scores between a client and a set of candidate
         donors for which comparable variables have been measured.
-
         A custom similarity metric is defined in this function that combines the Hamming distance
         for categorical variables with the Canberra distance for continuous variables into a
         univariate similarity metric between the client and a set of candidate donors loaded during
         init.
-
         :param client_data: a client data payload including a subset fo telemetry fields.
         :return: the sorted approximate likelihood ratio (np.array) corresponding to the
                  internally computed similarity score and a list of indices that link
@@ -123,14 +124,11 @@ class SimilarityRecommender(BaseRecommender):
 
         # Compute the distances between the user and the cached continuous
         # and categorical features.
-        cont_features = distance.cdist(self.continuous_features,
-                                       np.array([client_continuous_feats]),
-                                       'canberra')
+        cont_features = cdist(canberra, self.continuous_features, client_continuous_feats)
+
         # The lambda trick is needed to prevent |cdist| from force-casting the
         # string features to double.
-        cat_features = distance.cdist(self.categorical_features,
-                                      np.array([client_categorical_feats]),
-                                      lambda x, y: distance.hamming(x, y))
+        cat_features = cdist(hamming, self.categorical_features, client_categorical_feats)
 
         # Take the product of similarities to attain a univariate similarity score.
         # Addition of 0.001 to the continuous features avoids a zero value from the
