@@ -72,6 +72,14 @@ class CollaborativeRecommender(BaseRecommender):
         return False
 
     def recommend(self, client_data, limit):
+        recommendations = self.get_recommendations(client_data)
+
+        # Sort the suggested addons by their score and return the sorted list of addon
+        # ids.
+        sorted_dists = sorted(recommendations.items(), key=op.itemgetter(1), reverse=True)
+        return [s[0] for s in sorted_dists[:limit]]
+
+    def get_recommendations(self, client_data):
         # Addons identifiers are stored as positive hash values within the model.
         installed_addons =\
             [positive_hash(addon_id) for addon_id in client_data.get('installed_addons', [])]
@@ -104,7 +112,4 @@ class CollaborativeRecommender(BaseRecommender):
             addon_id = self.addon_mapping[hashed_id].get("id")
             distances[addon_id] = dist
 
-        # Sort the suggested addons by their score and return the sorted list of addon
-        # ids.
-        sorted_dists = sorted(distances.items(), key=op.itemgetter(1), reverse=True)
-        return [s[0] for s in sorted_dists[:limit]]
+        return defaultdict(int, distances)
