@@ -1,18 +1,10 @@
 import logging
 import numpy as np
+from collections import defaultdict
 from ..recommenders import utils
 from .base_recommender import BaseRecommender
 from scipy.spatial.distance import hamming, canberra
 import scipy
-
-CATEGORICAL_FEATURES = ["geo_city", "locale", "os"]
-CONTINUOUS_FEATURES = ["subsession_length", "bookmark_count", "tab_open_count", "total_uri", "unique_tlds"]
-
-S3_BUCKET = 'telemetry-parquet'
-DONOR_LIST_KEY = 'taar/similarity/donors.json'
-LR_CURVES_SIMILARITY_TO_PROBABILITY = 'taar/similarity/lr_curves.json'
-
-logger = logging.getLogger(__name__)
 
 def cdist(dist, A, b):
     return np.array([dist(a, b) for a in A])
@@ -32,15 +24,18 @@ class SimilarityRecommender(BaseRecommender):
     """
 
     def __init__(self):
+        self.CATEGORICAL_FEATURES = ["geo_city", "locale", "os"]
+        self.CONTINUOUS_FEATURES = ["subsession_length", "bookmark_count", "tab_open_count", "total_uri", "unique_tlds"]
+
+        self.S3_BUCKET = 'telemetry-parquet'
+        self.DONOR_LIST_KEY = 'taar/similarity/donors.json'
+        self.LR_CURVES_SIMILARITY_TO_PROBABILITY = 'taar/similarity/lr_curves.json'
+
         # Download the addon donors list.
-        self.donors_pool = utils.get_s3_json_content(S3_BUCKET, DONOR_LIST_KEY)
-        if self.donors_pool is None:
-            logger.error("Cannot download the donor list: {}".format(DONOR_LIST_KEY))
+        self.donors_pool = utils.get_s3_json_content(self.S3_BUCKET, self.DONOR_LIST_KEY)
 
         # Download the probability mapping curves from similarity to likelihood of being a good donor.
-        self.lr_curves = utils.get_s3_json_content(S3_BUCKET, LR_CURVES_SIMILARITY_TO_PROBABILITY)
-        if self.lr_curves is None:
-            logger.error("Cannot download the lr curves: {}".format(LR_CURVES_SIMILARITY_TO_PROBABILITY))
+        self.lr_curves = utils.get_s3_json_content(self.S3_BUCKET, self.LR_CURVES_SIMILARITY_TO_PROBABILITY)
 
         self.build_features_caches()
 
@@ -56,16 +51,16 @@ class SimilarityRecommender(BaseRecommender):
         self.num_donors = len(self.donors_pool)
 
         # Build a numpy matrix cache for the continuous features.
-        self.continuous_features = np.zeros((self.num_donors, len(CONTINUOUS_FEATURES)))
+        self.continuous_features = np.zeros((self.num_donors, len(self.CONTINUOUS_FEATURES)))
         for idx, d in enumerate(self.donors_pool):
-            features = [d.get(specified_key) for specified_key in CONTINUOUS_FEATURES]
+            features = [d.get(specified_key) for specified_key in self.CONTINUOUS_FEATURES]
             self.continuous_features[idx] = features
 
         # Build the cache for categorical features.
         self.categorical_features =\
-            np.zeros((self.num_donors, len(CATEGORICAL_FEATURES)), dtype='object')
+            np.zeros((self.num_donors, len(self.CATEGORICAL_FEATURES)), dtype='object')
         for idx, d in enumerate(self.donors_pool):
-            features = [d.get(specified_key) for specified_key in CATEGORICAL_FEATURES]
+            features = [d.get(specified_key) for specified_key in self.CATEGORICAL_FEATURES]
             self.categorical_features[idx] = np.array([features], dtype="object")
 
         # This will significantly speed up |get_lr|.
@@ -78,12 +73,9 @@ class SimilarityRecommender(BaseRecommender):
 
         # Check that the client info contains a non-None value for each required
         # telemetry field.
-        REQUIRED_FIELDS = CATEGORICAL_FEATURES + CONTINUOUS_FEATURES
+        REQUIRED_FIELDS = self.CATEGORICAL_FEATURES + self.CONTINUOUS_FEATURES
 
         has_fields = all([client_data.get(f, None) is not None for f in REQUIRED_FIELDS])
-        if not has_fields:
-            # Can not add extra info because client_id may not be available.
-            logger.error("Unusable client data encountered")
         return has_fields
 
     def get_lr(self, score):
@@ -119,8 +111,8 @@ class SimilarityRecommender(BaseRecommender):
                  internally computed similarity score and a list of indices that link
                  each LR score with the related donor in the |self.donors_pool|.
         """
-        client_categorical_feats = [client_data.get(specified_key) for specified_key in CATEGORICAL_FEATURES]
-        client_continuous_feats = [client_data.get(specified_key) for specified_key in CONTINUOUS_FEATURES]
+        client_categorical_feats = [client_data.get(specified_key) for specified_key in self.CATEGORICAL_FEATURES]
+        client_continuous_feats = [client_data.get(specified_key) for specified_key in self.CONTINUOUS_FEATURES]
 
         # Compute the distances between the user and the cached continuous
         # and categorical features.
@@ -149,9 +141,6 @@ class SimilarityRecommender(BaseRecommender):
         donor_set_ranking, indices = self.get_similar_donors(client_data)
         # 2.0 corresponds to a likelihood ratio of 2 meaning that donors are less than twice
         # as likely to be 'good'. A value > 1.0 is sufficient, but we like this to be high.
-        if donor_set_ranking[0] < 2.0:
-            logger.warning("Addons recommended with very low similarity score, perhaps donor set is unrepresentative",
-                           extra={"maximum_similarity": donor_set_ranking[0]})
 
         # Retrieve the indices of the highest ranked donors and then append their
         # installed addons.
@@ -164,11 +153,11 @@ class SimilarityRecommender(BaseRecommender):
                 break
         return recommendations[:limit]
 
-    def get_recommendations(self, client_data):
+    def get_weighted_recommendations(self, client_data):
         recommendations = defaultdict(int)
 
-        for donor_score, donor in zip(*sr.get_similar_donors(client_data)):
-            for addon in sr.donors_pool[donor]['active_addons']:
+        for donor_score, donor in zip(*self.get_similar_donors(client_data)):
+            for addon in self.donors_pool[donor]['active_addons']:
                 recommendations[addon] += donor_score
 
         return recommendations

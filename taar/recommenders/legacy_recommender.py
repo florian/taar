@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from ..recommenders import utils
 from .base_recommender import BaseRecommender
 
@@ -60,12 +61,12 @@ class LegacyRecommender(BaseRecommender):
 
         return recommendations[:limit]
 
-    def get_recommendations(self, client_data):
+    def get_weighted_recommendations(self, client_data):
         recommendations = defaultdict(int)
         addons = client_data.get('disabled_addons_ids', [])
 
         for addon in addons:
-            for replacement in self.legacy_addons.get(addon, []):
+            for replacement in self.legacy_replacements.get(addon, []):
                 recommendations[replacement] += 1
 
         return recommendations

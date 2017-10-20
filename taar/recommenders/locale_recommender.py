@@ -1,5 +1,6 @@
 import logging
 import json
+from collections import defaultdict
 from ..recommenders import utils
 from .base_recommender import BaseRecommender
 
@@ -51,6 +52,6 @@ class LocaleRecommender(BaseRecommender):
         client_locale = client_data.get('locale')
         return self.top_addons_per_locale.get(client_locale, [])[:limit]
 
-    def get_recommendations(self, client_data):
+    def get_weighted_recommendations(self, client_data):
         client_locale = client_data.get('locale', None)
         return defaultdict(int, self.top_addons_by_locale[client_locale])
